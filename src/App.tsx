@@ -1,112 +1,80 @@
-import { init, id } from "@instantdb/react";
-import schema from "../instant.schema.ts";
+import { init as initAdmin } from "@instantdb/admin"
+import { id, init } from "@instantdb/react"
+import { useEffect, useState } from "react"
+import schema from "../instant.schema.ts"
 
-const APP_ID = import.meta.env.VITE_INSTANT_APP_ID!;
+const APP_ID = import.meta.env.VITE_INSTANT_APP_ID!
+const ADMIN_TOKEN = import.meta.env.VITE_INSTANT_ADMIN_TOKEN!
 
-const db = init({ appId: APP_ID, schema });
+const db = init({ appId: APP_ID, schema })
+const adminDb = initAdmin({
+    appId: APP_ID,
+    adminToken: ADMIN_TOKEN,
+    schema
+})
 
 function App() {
-  const { isLoading, data, error } = db.useQuery({ todos: {} });
-  if (isLoading) return null;
-  if (APP_ID === "REPLACE_ME") return <MissingAppScreen />;
-  if (error) return <ErrorScreen error={error} />;
+    const [token, setToken] = useState<string | null>(null)
+    const { data } = db.useQuery({ todos: {} })
+    const { user } = db.useAuth()
 
-  return (
-    <div className="p-4 space-y-4">
-      <h2 className="space-x-2 flex">
-        <img src="/instant.svg" alt="Instant Logo" className="w-5" />
-        <span>instant-repro</span>
-      </h2>
-      <div className="space-y-4">
-        <p>You've got data!</p>
-        <pre className="text-sm bg-orange-100 max-w-xl p-3 max-h-96 overflow-y-scroll">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-        <div className="space-x-4">
-          <button
-            className="border border-blue-500 p-2 cursor-pointer"
-            onClick={() => {
-              db.transact(
-                db.tx.todos[id()].update({ title: "Hello", body: "World" })
-              );
-            }}
-          >
-            Add a todo!
-          </button>
-          <button
-            className="border border-red-500 p-2 cursor-pointer"
-            onClick={() => {
-              db.transact(
-                data.todos.map((todo) => db.tx.todos[todo.id].delete())
-              );
-            }}
-          >
-            Delete all todos
-          </button>
+    useEffect(() => {
+        adminDb.auth
+            .createToken("test@test.com")
+            .then((token) => {
+                setToken(token)
+            })
+            .catch((err) => {
+                console.error("Error creating token:", err)
+            })
+    }, [])
+
+    useEffect(() => {
+        if (!token) return
+
+        db.auth.signInWithToken(token)
+    }, [token])
+
+    const createTodo = () => {
+        db.transact([
+            db.tx.todos[id()].update({
+                userId: user?.id,
+                title: "todo"
+            })
+        ])
+    }
+
+    return (
+        <div className="container flex flex-col items-center justify-center gap-4 p-4">
+            <h1>Todos</h1>
+            <h2>{user?.email}</h2>
+            <button
+                type="button"
+                onClick={createTodo}
+                className="cursor-pointer bg-blue-500 px-4 py-2 text-white"
+            >
+                Create Todo
+            </button>
+
+            {data?.todos.map((todo) => (
+                <div
+                    key={todo.id}
+                    className="flex w-full max-w-md items-center justify-between rounded bg-gray-100 p-4"
+                >
+                    <p>{todo.title}</p>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            db.transact([db.tx.todos[todo.id].delete()])
+                        }}
+                        className="cursor-pointer bg-red-500 px-4 py-2 text-sm text-white"
+                    >
+                        Delete
+                    </button>
+                </div>
+            ))}
         </div>
-        <div>
-          Feel free to change this code base. Once you have a repro, or if you
-          have questions, ping us on{" "}
-          <a
-            href="https://discord.com/invite/VU53p7uQcE"
-            className="text-blue-500 underline"
-          >
-            Discord
-          </a>
-          .
-        </div>
-      </div>
-    </div>
-  );
+    )
 }
 
-function ErrorScreen({ error }: { error: { message: string } }) {
-  return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-xl font-bold">🤕 Uh oh, we've got an error</h2>
-      <p>Here's the message:</p>
-      <pre className="text-sm bg-orange-100 max-w-xl p-3 max-h-96 overflow-y-scroll">
-        {JSON.stringify(error, null, 2)}
-      </pre>
-      <p>
-        If this isn't expected and we can help, share the details with us on{" "}
-        <a
-          href="https://discord.com/invite/VU53p7uQcE"
-          className="text-blue-500 underline"
-        >
-          Discord
-        </a>
-        .
-      </p>
-    </div>
-  );
-}
-
-function MissingAppScreen() {
-  return (
-    <div className="p-4 space-y-4 max-w-xl">
-      <h1 className="text-xl font-bold inline-flex space-x-2">
-        <img src="/instant.svg" alt="Instant Logo" className="w-5" />
-        <span>Welcome to Instant's Repro App!</span>
-      </h1>
-      <p>
-        To get started, head on over to your{" "}
-        <a
-          href="https://www.instantdb.com/dash"
-          target="_blank"
-          className="text-blue-500 underline"
-        >
-          Dashboard
-        </a>{" "}
-        and copy over your App ID.
-      </p>
-      <p>
-        Set <code className="font-bold">`VITE_INSTANT_APP_ID`</code> in your
-        <code className="font-bold">`.env`</code> file and refresh this page.
-        Once done, you'll be ready to test!
-      </p>
-    </div>
-  );
-}
-
-export default App;
+export default App
